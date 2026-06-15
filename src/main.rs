@@ -2,8 +2,10 @@ pub mod aur;
 pub mod cache;
 pub mod config;
 pub mod extract;
+pub mod interactive;
 pub mod ollama;
 pub mod prompt;
+pub mod routes;
 pub mod scanner;
 pub mod version;
 
@@ -69,57 +71,58 @@ async fn main() {
         return;
     }
 
-    let first = &args[0];
-    let is_install = first == "-S" || first.starts_with("-S");
+    use crate::routes::{route, Command};
 
-    if is_install {
-        // ── Install mode ──────────────────────────────────────────────────
-        // 1.  Locate the real yay so we can delegate after scanning.
-        let _real_yay = match find_real_yay() {
-            Some(path) => path,
-            None => {
-                eprintln!("error: yay not found in PATH");
-                std::process::exit(1);
-            }
-        };
-
-        // 2.  Load configuration and create the scanner pipeline.
-        let config = crate::config::load_or_default();
-        let scanner = crate::scanner::Scanner::new(&config);
-
-        // 3.  Extract bare package names (skip flags).
-        let package_names: Vec<&str> = args
-            .iter()
-            .skip(1) // skip the -S flag itself
-            .filter(|a| !a.starts_with('-'))
-            .map(|s| s.as_str())
-            .collect();
-
-        if package_names.is_empty() {
-            eprintln!("error: no package names specified");
-            std::process::exit(1);
-        }
-
-        // 4.  Scan each AUR package.
-        match scanner.scan_packages_batch(&package_names).await {
-            Ok(results) => {
-                // TODO (T14): interactive prompt per package
-                for pkg in &results {
-                    println!("{}: {:?}", pkg.name, pkg.result);
+    match route(&cli.args) {
+        Command::Install(packages) => {
+            // ── Install mode ──────────────────────────────────────────────────
+            // 1.  Locate the real yay so we can delegate after scanning.
+            let _real_yay = match find_real_yay() {
+                Some(path) => path,
+                None => {
+                    eprintln!("error: yay not found in PATH");
+                    std::process::exit(1);
                 }
-                // TODO (T15): delegate to real yay
-                println!("would delegate to yay: {args:?}");
-            }
-            Err(e) => {
-                eprintln!("error: scan failed: {e}");
-                std::process::exit(1);
+            };
+
+            // 2.  Load configuration and create the scanner pipeline.
+            let config = crate::config::load_or_default();
+            let scanner = crate::scanner::Scanner::new(&config);
+
+            // 3.  Scan each AUR package (names already extracted by route()).
+            let package_names: Vec<&str> = packages.iter().map(|s| s.as_str()).collect();
+
+            match scanner.scan_packages_batch(&package_names).await {
+                Ok(mut results) => {
+                    let decisions = crate::interactive::present_findings(&results);
+                    crate::interactive::print_summary(&results, &decisions);
+
+                    // Apply decisions back to scans
+                    for (scan, decision) in results.iter_mut().zip(decisions.iter()) {
+                        scan.decision = Some(decision.clone());
+                    }
+
+                    // TODO (T15): delegate to real yay
+                    println!("would delegate to yay: {args:?}");
+                }
+                Err(e) => {
+                    eprintln!("error: scan failed: {e}");
+                    std::process::exit(1);
+                }
             }
         }
-    } else {
-        // ── Passthrough mode ──────────────────────────────────────────────
-        // Forward everything verbatim to the real yay.
-        // TODO (T15): replace with exec::delegate_to_yay(&args)
-        println!("would delegate to yay: {args:?}");
+        Command::Update => {
+            // ── Update mode ────────────────────────────────────────────────────
+            // TODO (T14): scan all cached packages for system upgrade
+            println!("would scan all cached packages (update mode)");
+            println!("would delegate to yay: {args:?}");
+        }
+        Command::Passthrough(_passthrough_args) => {
+            // ── Passthrough mode ───────────────────────────────────────────────
+            // Forward everything verbatim to the real yay.
+            // TODO (T15): replace with exec::delegate_to_yay(&args)
+            println!("would delegate to yay: {args:?}");
+        }
     }
 }
 

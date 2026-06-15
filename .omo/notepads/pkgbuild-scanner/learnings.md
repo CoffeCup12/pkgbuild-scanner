@@ -127,6 +127,19 @@
 - Test helper `create_test_tarball()` mirrors the pattern from aur.rs tests (tar::Builder + GzEncoder)
 - All 4 tests pass; full test suite: 66 passed, 0 failed
 
+## Task 14 — Interactive prompt (src/interactive.rs)
+- `present_findings_with_reader<R: BufRead>` accepts any `BufRead` source for testability (Cursor in tests, stdin in production)
+- `present_findings` wraps `present_findings_with_reader` with `std::io::stdin().lock()`
+- Three-way routing: Clean → auto-approve (green ✓), Error → auto-reject (red ✗), Suspicious → prompt [y/N] (default No)
+- ANSI color constants: `\x1b[32m` (green), `\x1b[33m` (yellow), `\x1b[31m` (red), `\x1b[0m` (reset)
+- `std::io::stdout().flush()` required after `print!()` because it's line-buffered and has no implicit newline
+- `eq_ignore_ascii_case("y")` for case-insensitive approval check — only literal `"y"` or `"Y"` triggers approve
+- `has_suspicious()` returns true if ANY scan is Suspicious or Error (used by T15 to gate yay delegation)
+- `print_summary()` prints a boxed table with colored APPROVE/REJECT status per package + totals
+- `results` in main.rs must be declared `mut` to apply decisions via `iter_mut().zip()`
+- `pub mod interactive;` required in main.rs to register the module
+- 11 unit tests: 4 has_suspicious (all clean, with suspicious, with error, empty), 6 present_findings (all clean, all error, suspicious approve, suspicious reject n, suspicious default reject, mixed), 1 print_summary (no-panic check)
+
 ## Task 12 — CLI entrypoint (src/main.rs)
 - `#[derive(Parser)]` with `#[command(trailing_var_arg = true)]` captures all CLI args into `args: Vec<String>`
 - `#[arg(trailing_var_arg = true, allow_hyphen_values = true)]` required on the args field so clap doesn't reject flags after the first positional
@@ -136,3 +149,17 @@
 - Stub phase: install mode prints results + `"would delegate to yay: {args:?}"`; passthrough mode prints same stub. T14/T15 will replace these.
 - `crate::config::load_or_default()` and `crate::scanner::Scanner::new(&config)` wire up the full pipeline
 - `pub mod config;` declaration required in main.rs to make config module accessible
+
+## Task 13 — Command router (src/routes.rs)
+- `Command` enum: `Install(Vec<String>)` (package names), `Update` (system upgrade), `Passthrough(Vec<String>)` (forward to real yay)
+- `route(args: &[String]) -> Command`: classifies CLI args in priority order
+  - Non-`-S` first arg → Passthrough
+  - `-S` prefix with non-install chars (`s`, `i`, `l`, `g`) in suffix → Passthrough (search/info/list/groups are not install ops)
+  - Pure install/update flag + package names → Install (overrides update signal)
+  - Pure update flag (`yu` or `ua` in suffix) with no packages → Update
+  - Otherwise → Passthrough (e.g. bare `-S` with no packages)
+- `extract_package_names(args: &[String]) -> Vec<String>`: skips args[0] (the flag), collects all non-hyphen args as package names — handles interspersed flags like `--noconfirm`
+- Suffix parsing: `first[2..]` gets chars after `-S`; non-install chars are `s`, `i`, `l`, `g` (search, info, list, groups)
+- Valid install/update suffix chars include `y` (refresh), `u` (sysupgrade), `a` (AUR), plus any other modifiers — so use blocklist (reject `s`,`i`,`l`,`g`) rather than allowlist
+- Main.rs updated: `match route(&cli.args)` replaces `starts_with("-S")` check, with separate `Command::Install`, `Command::Update`, `Command::Passthrough` arms
+- 16 unit tests: 12 route tests + 4 extract_package_names tests; all pass within full suite (100 tests total)
