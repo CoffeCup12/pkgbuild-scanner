@@ -16,5 +16,8 @@ tar = "0.4"
 tempfile = "3"
 chrono = { version = "0.4", features = ["serde"] }
 
+[features]
+integration = []
+
 [dev-dependencies]
 wiremock = "0.6"
