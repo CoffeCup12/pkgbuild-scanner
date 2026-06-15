@@ -1,6 +1,7 @@
 pub mod aur;
 pub mod cache;
 pub mod config;
+pub mod exec;
 pub mod extract;
 pub mod interactive;
 pub mod ollama;
@@ -12,7 +13,7 @@ pub mod version;
 mod types;
 
 use clap::Parser;
-use std::path::PathBuf;
+use std::process::ExitCode;
 
 // ─── CLI definition ───────────────────────────────────────────────────────────
 
@@ -29,36 +30,10 @@ struct Cli {
     args: Vec<String>,
 }
 
-// ─── Real-yay discovery ───────────────────────────────────────────────────────
-
-/// Search PATH for a `yay` binary that is not our own executable.
-fn find_real_yay() -> Option<PathBuf> {
-    let self_path = std::env::current_exe().ok()?;
-    let path_var = std::env::var("PATH").ok()?;
-
-    for dir in path_var.split(':') {
-        let candidate = PathBuf::from(dir).join("yay");
-        // Must exist and be a regular file
-        if std::fs::metadata(&candidate)
-            .map(|m| m.is_file())
-            .unwrap_or(false)
-        {
-            // Exclude our own binary (compare canonical paths)
-            if let Ok(canonical) = std::fs::canonicalize(&candidate) {
-                if canonical == self_path {
-                    continue;
-                }
-            }
-            return Some(candidate);
-        }
-    }
-    None
-}
-
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
 #[tokio::main]
-async fn main() {
+async fn main() -> ExitCode {
     let cli = Cli::parse();
     let args = &cli.args;
 
@@ -68,28 +43,20 @@ async fn main() {
         println!();
         println!("Usage: yay [options] [package...]");
         println!("For help on yay itself, run: yay --help");
-        return;
+        return ExitCode::SUCCESS;
     }
 
     use crate::routes::{route, Command};
+    use crate::types::UserDecision;
 
     match route(&cli.args) {
         Command::Install(packages) => {
             // ── Install mode ──────────────────────────────────────────────────
-            // 1.  Locate the real yay so we can delegate after scanning.
-            let _real_yay = match find_real_yay() {
-                Some(path) => path,
-                None => {
-                    eprintln!("error: yay not found in PATH");
-                    std::process::exit(1);
-                }
-            };
-
-            // 2.  Load configuration and create the scanner pipeline.
+            // 1.  Load configuration and create the scanner pipeline.
             let config = crate::config::load_or_default();
             let scanner = crate::scanner::Scanner::new(&config);
 
-            // 3.  Scan each AUR package (names already extracted by route()).
+            // 2.  Scan each AUR package (names already extracted by route()).
             let package_names: Vec<&str> = packages.iter().map(|s| s.as_str()).collect();
 
             match scanner.scan_packages_batch(&package_names).await {
@@ -102,26 +69,37 @@ async fn main() {
                         scan.decision = Some(decision.clone());
                     }
 
-                    // TODO (T15): delegate to real yay
-                    println!("would delegate to yay: {args:?}");
+                    // Filter approved packages
+                    let approved: Vec<String> = results
+                        .iter()
+                        .filter(|s| s.decision == Some(UserDecision::Approve))
+                        .map(|s| s.name.clone())
+                        .collect();
+
+                    if approved.is_empty() {
+                        println!("No packages approved. Nothing to install.");
+                        return ExitCode::SUCCESS;
+                    }
+
+                    let cmd = exec::build_install_command(&approved, &cli.args);
+                    return exec::delegate_to_yay(&cmd);
                 }
                 Err(e) => {
                     eprintln!("error: scan failed: {e}");
-                    std::process::exit(1);
+                    return ExitCode::FAILURE;
                 }
             }
         }
         Command::Update => {
             // ── Update mode ────────────────────────────────────────────────────
-            // TODO (T14): scan all cached packages for system upgrade
-            println!("would scan all cached packages (update mode)");
-            println!("would delegate to yay: {args:?}");
+            // TODO (T14): scan all cached packages for system upgrade.
+            // For now, delegate directly to real yay (no package filtering yet).
+            return exec::delegate_to_yay(args);
         }
         Command::Passthrough(_passthrough_args) => {
             // ── Passthrough mode ───────────────────────────────────────────────
             // Forward everything verbatim to the real yay.
-            // TODO (T15): replace with exec::delegate_to_yay(&args)
-            println!("would delegate to yay: {args:?}");
+            return exec::delegate_to_yay(args);
         }
     }
 }

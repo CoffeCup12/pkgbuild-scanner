@@ -163,3 +163,18 @@
 - Valid install/update suffix chars include `y` (refresh), `u` (sysupgrade), `a` (AUR), plus any other modifiers — so use blocklist (reject `s`,`i`,`l`,`g`) rather than allowlist
 - Main.rs updated: `match route(&cli.args)` replaces `starts_with("-S")` check, with separate `Command::Install`, `Command::Update`, `Command::Passthrough` arms
 - 16 unit tests: 12 route tests + 4 extract_package_names tests; all pass within full suite (100 tests total)
+
+## Task 15 — yay delegator (src/exec.rs)
+- New module `src/exec.rs` with three public functions: `find_real_yay()`, `build_install_command()`, `delegate_to_yay()`
+- `find_real_yay()` moved from `main.rs` to `exec.rs` — identical logic: split `PATH`, check `{dir}/yay`, exclude self via `std::fs::canonicalize` comparison
+- `build_install_command(approved, original_args)`: iterates `original_args`, keeps flags (start with `-`) and approved packages only (via `HashSet` O(1) lookup), drops non-approved package names. Returns new `Vec<String>` — never mutates input
+- `delegate_to_yay(args) -> ExitCode`: finds real yay, spawns via `Command::new(path).args(args).status()` (NOT `.output()` — inherits stdio for interactive yay output), propagates exit code. On Unix: if `status.code()` is `None`, uses `ExitStatusExt::signal()` + 128 convention. If yay not found: eprints to stderr, returns `ExitCode::FAILURE`
+- `ExitCode::FAILURE` used instead of `ExitCode::from(1u8)` for readability (standard library constant = 1)
+- `HashSet<&str>` from `std::collections::HashSet` for const-time lookups in `build_install_command`
+- `Command::Update` arm delegates directly to yay for now (T14 will add cache-wide scanning + filtering)
+- `main()` return type changed to `-> ExitCode` to propagate delegation exit codes cleanly (supported by `#[tokio::main]` in tokio 1.x)
+- Import `use crate::types::UserDecision;` added to main.rs for the `filter(|s| s.decision == Some(UserDecision::Approve))` check
+- Removed early `find_real_yay()` check in Install arm — `delegate_to_yay()` handles the "yay not found" case internally
+- Empty approved packages → prints message, returns `ExitCode::SUCCESS` (no delegation attempted)
+- `unsafe` blocks needed in `exec.rs` tests for `std::env::set_var`/`remove_var` (edition 2024 requires them); test helper `RestorePath` struct with `Drop` impl restores PATH
+- 8 exec module tests: 5 `build_install_command` (filters rejected, preserves flags, empty approved, all approved, mixed flags+packages), 1 `find_real_yay`, 2 `delegate_to_yay` (not found, exec failure). Full suite: 108 passed, 0 failed
