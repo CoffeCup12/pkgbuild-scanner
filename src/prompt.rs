@@ -2,21 +2,7 @@
 ///
 /// Use `get_prompt(config)` to retrieve the prompt, respecting user overrides.
 
-#[cfg(not(test))]
 use crate::types::Config;
-
-#[cfg(test)]
-use self::mock_types::{Config, OllamaConfig};
-
-#[cfg(test)]
-mod mock_types {
-    pub struct OllamaConfig {
-        pub prompt_override: Option<String>,
-    }
-    pub struct Config {
-        pub ollama: OllamaConfig,
-    }
-}
 
 /// Default comprehensive security audit prompt for PKGBUILD analysis.
 ///
@@ -54,14 +40,18 @@ pub fn get_prompt(config: &Config) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use super::{Config, OllamaConfig, DEFAULT_PROMPT, get_prompt};
+    use super::{Config, DEFAULT_PROMPT, get_prompt};
+    use crate::types::OllamaConfig;
 
     #[test]
     fn test_get_prompt_returns_default_when_no_override() {
         let config = Config {
             ollama: OllamaConfig {
+                model: String::new(),
+                endpoint: String::new(),
                 prompt_override: None,
             },
+            cache: crate::types::CacheConfig { ttl_hours: 24 },
         };
         assert_eq!(get_prompt(&config), DEFAULT_PROMPT);
     }
@@ -70,8 +60,11 @@ mod tests {
     fn test_get_prompt_returns_override_when_set() {
         let config = Config {
             ollama: OllamaConfig {
+                model: String::new(),
+                endpoint: String::new(),
                 prompt_override: Some("custom prompt".to_string()),
             },
+            cache: crate::types::CacheConfig { ttl_hours: 24 },
         };
         assert_eq!(get_prompt(&config), "custom prompt");
     }

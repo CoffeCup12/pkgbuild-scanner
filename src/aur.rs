@@ -26,6 +26,13 @@ impl AurClient {
         }
     }
 
+    /// Create a client with a pre-built `reqwest::Client` and custom base URL.
+    ///
+    /// Used in tests to point at a wiremock server.
+    pub fn with_client(client: reqwest::Client, base_url: String) -> Self {
+        Self { client, base_url }
+    }
+
     /// Query package info from the AUR RPC v5 `/info` endpoint.
     ///
     /// Builds a URL like `https://aur.archlinux.org/rpc/v5/info?arg[]=pkg1&arg[]=pkg2`

@@ -97,3 +97,32 @@
 - Missing `"response"` field → `Err` (not `ScanResult::Error`)
 - Malformed JSON → `Err`
 - Connection refused test uses `http://127.0.0.1:19999` with 1s timeout client
+
+## Task 9 — Scanner orchestrator (src/scanner.rs)
+- `Scanner` ties AurClient + OllamaClient + FileCache + prompt into a unified pipeline
+- `Scanner::new(config)` creates AurClient::new(), OllamaClient::new(endpoint, model), FileCache::new(), prompt from `prompt::get_prompt(config).to_string()`
+- `scan_packages()` two-phase algorithm: Phase 1 builds `HashMap<String, ScanResult>` keyed by PackageBase (dedup); Phase 2 builds ordered `Vec<PackageScan>` matching input order
+- Cache miss flow: validate PKGBUILD with `extract::validate_pkgbuild()` → scan with `ollama.scan()` → store result with `cache.store_result()`
+- Cache hit flow: `fetch_pkgbuilds` returns `None` for cached bases → scanner calls `cache.check_cache()` to retrieve stored result
+- Validation failures → `ScanResult::Error("PKGBUILD validation failed: ...")`
+- Ollama Err (network/timeout) → `ScanResult::Error("Ollama scan failed: ...")` — error variant, not panic
+- `scan_packages_batch()` delegates to `scan_packages()` (batch handled at AUR query level)
+- `package_names` is `&[&str]` to accept both `&["foo"]` (stack array) and `&vec_of_strings[..]` (slice)
+
+### AurClient testability fix
+- Added `AurClient::with_client(client, base_url)` constructor (same pattern as `OllamaClient::with_client`) to allow wiremock testing without accessing private fields
+
+### Prompt module fix
+- `prompt.rs` previously used `#[cfg(test)]` mock types to avoid dependency on `types.rs` being complete
+- Since all types are now fully defined in Task 9, removed mock types and always import from `crate::types::Config`
+- Updated prompt tests to construct full `Config` and `OllamaConfig` structs
+
+### Scanner tests (4 wiremock tests)
+- Single `MockServer` serves both AUR RPC + tarball download + Ollama `/api/generate`
+- `test_scan_packages_cache_hit`: pre-populate cache → `.expect(0)` on both tarball and Ollama mocks
+- `test_scan_packages_cache_miss`: empty cache → `.expect(1)` on tarball + Ollama, verify result persisted in cache
+- `test_scan_packages_dedup`: two packages sharing PackageBase → `.expect(1)` on tarball + Ollama (called once)
+- `test_scan_packages_partial_failure`: body-string matchers differentiate Ollama calls — first gets CLEAN, second gets HTTP 500 → `ScanResult::Error`
+- `wiremock::matchers::body_string_contains` needed when two POST mocks share same path but need different responses
+- Test helper `create_test_tarball()` mirrors the pattern from aur.rs tests (tar::Builder + GzEncoder)
+- All 4 tests pass; full test suite: 66 passed, 0 failed
