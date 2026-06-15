@@ -126,3 +126,13 @@
 - `wiremock::matchers::body_string_contains` needed when two POST mocks share same path but need different responses
 - Test helper `create_test_tarball()` mirrors the pattern from aur.rs tests (tar::Builder + GzEncoder)
 - All 4 tests pass; full test suite: 66 passed, 0 failed
+
+## Task 12 — CLI entrypoint (src/main.rs)
+- `#[derive(Parser)]` with `#[command(trailing_var_arg = true)]` captures all CLI args into `args: Vec<String>`
+- `#[arg(trailing_var_arg = true, allow_hyphen_values = true)]` required on the args field so clap doesn't reject flags after the first positional
+- `find_real_yay()`: split `PATH` by `:`, check `{dir}/yay` with `std::fs::metadata`, exclude self via `std::fs::canonicalize` comparison with `std::env::current_exe()`
+- `Cli::parse_from(&["yay", "-S", "cower"])` works with `&[&str; N]` — the full path in tests is `tests::test_*` (not `main::tests::*`) because the module is `mod tests` directly in `main.rs`
+- Main routing: `args.is_empty()` → help; first arg `== "-S" || starts_with("-S")` → install mode (scan); otherwise → passthrough stub
+- Stub phase: install mode prints results + `"would delegate to yay: {args:?}"`; passthrough mode prints same stub. T14/T15 will replace these.
+- `crate::config::load_or_default()` and `crate::scanner::Scanner::new(&config)` wire up the full pipeline
+- `pub mod config;` declaration required in main.rs to make config module accessible
