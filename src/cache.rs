@@ -108,6 +108,12 @@ impl FileCache {
     }
 }
 
+impl Default for FileCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

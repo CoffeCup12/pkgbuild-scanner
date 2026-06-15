@@ -102,19 +102,13 @@ mod tests {
     #[test]
     fn route_install_multi_package() {
         let result = route(&a(&["-S", "cower", "yay"]));
-        assert_eq!(
-            result,
-            Command::Install(vec!["cower".into(), "yay".into()])
-        );
+        assert_eq!(result, Command::Install(vec!["cower".into(), "yay".into()]));
     }
 
     #[test]
     fn route_install_with_interspersed_flags() {
         let result = route(&a(&["-S", "--noconfirm", "cower", "--needed", "yay"]));
-        assert_eq!(
-            result,
-            Command::Install(vec!["cower".into(), "yay".into()])
-        );
+        assert_eq!(result, Command::Install(vec!["cower".into(), "yay".into()]));
     }
 
     #[test]

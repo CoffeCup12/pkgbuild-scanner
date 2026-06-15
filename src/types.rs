@@ -130,8 +130,8 @@ mod tests {
             ]
         }"#;
 
-        let response: AurRpcResponse = serde_json::from_str(json)
-            .expect("AurRpcResponse should deserialize from valid JSON");
+        let response: AurRpcResponse =
+            serde_json::from_str(json).expect("AurRpcResponse should deserialize from valid JSON");
 
         assert_eq!(response.results.len(), 1);
         let pkg = &response.results[0];

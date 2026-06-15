@@ -1,0 +1,13 @@
+TEST 6: Check for panics with bogus empty string input
+Command: cargo run --release -- -S ""
+Result: PASS
+Output:
+  ═══════════════════════════════════════
+            Scan Summary
+  ═══════════════════════════════════════
+  ───────────────────────────────────────
+    0 approved, 0 rejected
+  ═══════════════════════════════════════
+  No packages approved. Nothing to install.
+Exit code: 0
+No panic. Empty package name handled gracefully.

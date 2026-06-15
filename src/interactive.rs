@@ -8,9 +8,12 @@ use crate::types::{PackageScan, ScanResult, UserDecision};
 
 /// Returns `true` if any scan has a `Suspicious` or `Error` result.
 pub fn has_suspicious(scans: &[PackageScan]) -> bool {
-    scans
-        .iter()
-        .any(|s| matches!(s.result, ScanResult::Suspicious { .. } | ScanResult::Error(_)))
+    scans.iter().any(|s| {
+        matches!(
+            s.result,
+            ScanResult::Suspicious { .. } | ScanResult::Error(_)
+        )
+    })
 }
 
 /// Presents findings and collects decisions, reading from an arbitrary `BufRead`
@@ -33,10 +36,7 @@ pub fn present_findings_with_reader<R: BufRead>(
                 decisions.push(UserDecision::Approve);
             }
             ScanResult::Error(msg) => {
-                println!(
-                    "\x1b[31m✗\x1b[0m {}: error — rejected ({})",
-                    scan.name, msg
-                );
+                println!("\x1b[31m✗\x1b[0m {}: error — rejected ({})", scan.name, msg);
                 decisions.push(UserDecision::Reject);
             }
             ScanResult::Suspicious { findings } => {
@@ -94,9 +94,7 @@ pub fn print_summary(scans: &[PackageScan], decisions: &[UserDecision]) {
         .count();
     let rejected = decisions.len() - approved;
     println!("───────────────────────────────────────");
-    println!(
-        "  \x1b[32m{approved} approved\x1b[0m, \x1b[31m{rejected} rejected\x1b[0m"
-    );
+    println!("  \x1b[32m{approved} approved\x1b[0m, \x1b[31m{rejected} rejected\x1b[0m");
     println!("═══════════════════════════════════════");
 }
 

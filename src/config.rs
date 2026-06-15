@@ -168,10 +168,7 @@ ttl_hours = 24
         let cfg = load_config_from(&path);
         assert_eq!(cfg.ollama.model, "llama3");
         assert_eq!(cfg.ollama.endpoint, "http://192.168.1.100:11434");
-        assert_eq!(
-            cfg.ollama.prompt_override.as_deref(),
-            Some("custom prompt")
-        );
+        assert_eq!(cfg.ollama.prompt_override.as_deref(), Some("custom prompt"));
         assert_eq!(cfg.cache.ttl_hours, 24);
     }
 

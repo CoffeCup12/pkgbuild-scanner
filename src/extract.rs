@@ -28,8 +28,7 @@ use tar::Archive;
 /// - No entry named `PKGBUILD` is found
 /// - The PKGBUILD entry cannot be read as UTF-8
 pub fn extract_pkgbuild(tarball_path: &Path) -> Result<String, String> {
-    let file =
-        File::open(tarball_path).map_err(|e| format!("Failed to open tarball: {}", e))?;
+    let file = File::open(tarball_path).map_err(|e| format!("Failed to open tarball: {}", e))?;
 
     let decoder = GzDecoder::new(file);
     let mut archive = Archive::new(decoder);
@@ -81,11 +80,9 @@ pub fn validate_pkgbuild(content: &str) -> Result<(), String> {
         || content.contains("depends=");
 
     if !has_field {
-        return Err(
-            "PKGBUILD does not contain any expected fields \
+        return Err("PKGBUILD does not contain any expected fields \
              (pkgname=, pkgver=, source=, makedepends=, depends=)"
-                .to_string(),
-        );
+            .to_string());
     }
 
     Ok(())
@@ -106,8 +103,8 @@ pub fn cleanup_temp_dir(dir: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use flate2::write::GzEncoder;
     use flate2::Compression;
+    use flate2::write::GzEncoder;
     use tar::Builder;
     use tar::Header;
     use tempfile::TempDir;

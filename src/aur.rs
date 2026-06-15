@@ -83,10 +83,7 @@ impl AurClient {
             .map_err(|e| format!("Failed to download tarball: {}", e))?;
 
         if !resp.status().is_success() {
-            return Err(format!(
-                "Tarball download returned HTTP {}",
-                resp.status()
-            ));
+            return Err(format!("Tarball download returned HTTP {}", resp.status()));
         }
 
         let body = resp
@@ -97,8 +94,8 @@ impl AurClient {
         let gz_decoder = GzDecoder::new(&body[..]);
         let mut archive = Archive::new(gz_decoder);
 
-        let tmp_dir = tempfile::tempdir()
-            .map_err(|e| format!("Failed to create temp dir: {}", e))?;
+        let tmp_dir =
+            tempfile::tempdir().map_err(|e| format!("Failed to create temp dir: {}", e))?;
 
         archive
             .unpack(tmp_dir.path())
@@ -131,8 +128,7 @@ impl AurClient {
     ) -> Result<Vec<(AurPackage, Option<String>)>, String> {
         let packages = self.query_packages(names).await?;
 
-        let mut results: Vec<(AurPackage, Option<String>)> =
-            Vec::with_capacity(packages.len());
+        let mut results: Vec<(AurPackage, Option<String>)> = Vec::with_capacity(packages.len());
         let mut downloaded: HashSet<String> = HashSet::new();
         let mut base_to_pkgbuild: HashMap<String, String> = HashMap::new();
 
@@ -143,8 +139,7 @@ impl AurClient {
                 if let Some(_result) = cache.check_cache(&base, &pkg.version) {
                     downloaded.insert(base);
                 } else {
-                    let content =
-                        self.download_and_extract_pkgbuild(&pkg.url_path).await?;
+                    let content = self.download_and_extract_pkgbuild(&pkg.url_path).await?;
                     base_to_pkgbuild.insert(base.clone(), content);
                     downloaded.insert(base);
                 }
@@ -154,6 +149,12 @@ impl AurClient {
         }
 
         Ok(results)
+    }
+}
+
+impl Default for AurClient {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -228,8 +229,8 @@ mod tests {
 
         let mut gz_vec = Vec::new();
         {
-            use flate2::write::GzEncoder;
             use flate2::Compression;
+            use flate2::write::GzEncoder;
             let mut encoder = GzEncoder::new(&mut gz_vec, Compression::default());
             encoder.write_all(&tar_data).unwrap();
             encoder.finish().unwrap();
@@ -268,10 +269,7 @@ mod tests {
         assert_eq!(packages[0].name, "cower");
         assert_eq!(packages[0].package_base, "cower");
         assert_eq!(packages[0].version, "18-1");
-        assert_eq!(
-            packages[0].url_path,
-            "/cgit/aur.git/snapshot/cower.tar.gz"
-        );
+        assert_eq!(packages[0].url_path, "/cgit/aur.git/snapshot/cower.tar.gz");
         assert_eq!(
             packages[0].description.as_deref(),
             Some("A simple AUR helper")
@@ -364,8 +362,8 @@ mod tests {
         let server = MockServer::start().await;
 
         // Create a tarball that does NOT contain a PKGBUILD file.
-        use flate2::write::GzEncoder;
         use flate2::Compression;
+        use flate2::write::GzEncoder;
 
         let mut tar_buffer = Vec::new();
         let mut tar_builder = tar::Builder::new(&mut tar_buffer);
@@ -401,9 +399,7 @@ mod tests {
             .await;
 
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .contains("No PKGBUILD found"));
+        assert!(result.unwrap_err().contains("No PKGBUILD found"));
     }
 
     // ── fetch_pkgbuilds dedup ─────────────────────────────────────────────────
@@ -461,12 +457,28 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(results.len(), 2, "should return one entry per input package");
+        assert_eq!(
+            results.len(),
+            2,
+            "should return one entry per input package"
+        );
         assert_eq!(results[0].0.name, "libfoo");
         assert_eq!(results[1].0.name, "libfoo-dev");
         // Cache miss → PKGBUILD text is Some(...)
-        assert!(results[0].1.as_ref().unwrap().contains("pkgbase=shared-lib"));
-        assert!(results[1].1.as_ref().unwrap().contains("pkgbase=shared-lib"));
+        assert!(
+            results[0]
+                .1
+                .as_ref()
+                .unwrap()
+                .contains("pkgbase=shared-lib")
+        );
+        assert!(
+            results[1]
+                .1
+                .as_ref()
+                .unwrap()
+                .contains("pkgbase=shared-lib")
+        );
     }
 
     // ── fetch_pkgbuilds cache hit ─────────────────────────────────────────────

@@ -1,0 +1,5 @@
+TEST 1: Build binary
+Command: cargo build --release
+Result: PASS
+Binary: target/release/pkgbuild-scanner (5.4M, ELF 64-bit LSB pie executable, x86-64, not stripped)
+Build time: 56.95s

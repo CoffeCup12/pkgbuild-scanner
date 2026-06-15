@@ -46,7 +46,7 @@ async fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    use crate::routes::{route, Command};
+    use crate::routes::{Command, route};
     use crate::types::UserDecision;
 
     match route(&cli.args) {
@@ -113,10 +113,7 @@ mod tests {
     #[test]
     fn test_parse_install_packages() {
         let cli = Cli::parse_from(&["yay", "-S", "cower"]);
-        assert_eq!(
-            cli.args,
-            vec!["-S".to_string(), "cower".to_string()]
-        );
+        assert_eq!(cli.args, vec!["-S".to_string(), "cower".to_string()]);
     }
 
     #[test]
@@ -128,9 +125,6 @@ mod tests {
     #[test]
     fn test_parse_remove() {
         let cli = Cli::parse_from(&["yay", "-R", "cower"]);
-        assert_eq!(
-            cli.args,
-            vec!["-R".to_string(), "cower".to_string()]
-        );
+        assert_eq!(cli.args, vec!["-R".to_string(), "cower".to_string()]);
     }
 }

@@ -63,17 +63,11 @@ mod tests {
 
     #[test]
     fn test_cache_key_different_bases_different_keys() {
-        assert_ne!(
-            make_cache_key("a", "1-1"),
-            make_cache_key("b", "1-1")
-        );
+        assert_ne!(make_cache_key("a", "1-1"), make_cache_key("b", "1-1"));
     }
 
     #[test]
     fn test_cache_key_same_input_same_key() {
-        assert_eq!(
-            make_cache_key("a", "1-1"),
-            make_cache_key("a", "1-1")
-        );
+        assert_eq!(make_cache_key("a", "1-1"), make_cache_key("a", "1-1"));
     }
 }

@@ -1,0 +1,37 @@
+# Final QA Report — pkgbuild-scanner
+Date: 2026-06-15
+
+## Results Summary
+
+| # | Test | Result |
+|---|------|--------|
+| 1 | Build binary (`cargo build --release`) | PASS |
+| 2 | Run `--help` | PASS |
+| 3 | Run `-S` (install, no packages) | PASS |
+| 4 | Run `-R testpkg` (passthrough to real yay) | PASS |
+| 5 | Run `-S nonexistent-pkg` (config loading) | PASS |
+| 6 | Run `-S ""` (bogus empty input) | PASS |
+| 7 | Source file inventory (13 src/*.rs) | PASS |
+| 8 | `.unwrap()` audit (non-test code) | PASS |
+
+## Metrics
+
+Scenarios [8/8 pass] | Integration [3/3] | Edge Cases [3 tested] | VERDICT: APPROVE
+
+## Details
+
+- **Build**: 5.4M ELF x86-64 binary, compiles cleanly
+- **Help**: Displays correct usage with yay passthrough description
+- **No packages**: Exits 0 gracefully, no crash
+- **Passthrough**: Correctly delegates `-R` to real yay in PATH, propagates exit code
+- **Config loading**: No panic with nonexistent package; graceful Scan Summary output
+- **Bogus input**: Empty package name handled without panic
+- **Source files**: All 13 expected files present (user stated 12 but listed 13)
+- **Unwrap audit**: 0 unwrap() calls in production code — all 64 occurrences are in `#[cfg(test)]` blocks
+
+## Edge Cases Exercised
+- Empty install (no packages specified)
+- Nonexistent package lookup
+- Empty string as package name
+- Missing real yay in PATH
+- Passthrough argument forwarding

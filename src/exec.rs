@@ -26,10 +26,10 @@ pub fn find_real_yay() -> Option<PathBuf> {
             .unwrap_or(false)
         {
             // Exclude our own binary (compare canonical paths)
-            if let Ok(canonical) = std::fs::canonicalize(&candidate) {
-                if canonical == self_path {
-                    continue;
-                }
+            if let Ok(canonical) = std::fs::canonicalize(&candidate)
+                && canonical == self_path
+            {
+                continue;
             }
             return Some(candidate);
         }
@@ -57,8 +57,7 @@ pub fn find_real_yay() -> Option<PathBuf> {
 /// assert_eq!(cmd, vec!["-S", "--noconfirm", "cower"]);
 /// ```
 pub fn build_install_command(approved: &[String], original_args: &[String]) -> Vec<String> {
-    let approved_set: HashSet<&str> =
-        approved.iter().map(|s| s.as_str()).collect();
+    let approved_set: HashSet<&str> = approved.iter().map(|s| s.as_str()).collect();
 
     original_args
         .iter()
@@ -125,8 +124,12 @@ mod tests {
     fn test_build_install_command_filters_rejected() {
         // "suspicious" is NOT approved — should be dropped.
         let approved: Vec<String> = vec!["cower".into()];
-        let original: Vec<String> =
-            vec!["-S".into(), "--noconfirm".into(), "cower".into(), "suspicious".into()];
+        let original: Vec<String> = vec![
+            "-S".into(),
+            "--noconfirm".into(),
+            "cower".into(),
+            "suspicious".into(),
+        ];
 
         let cmd = build_install_command(&approved, &original);
         assert_eq!(cmd, vec!["-S", "--noconfirm", "cower"]);
@@ -151,8 +154,7 @@ mod tests {
     fn test_build_install_command_empty_approved() {
         // No packages approved — only flags remain (no package args).
         let approved: Vec<String> = vec![];
-        let original: Vec<String> =
-            vec!["-S".into(), "--noconfirm".into(), "cower".into()];
+        let original: Vec<String> = vec!["-S".into(), "--noconfirm".into(), "cower".into()];
 
         let cmd = build_install_command(&approved, &original);
         assert_eq!(cmd, vec!["-S", "--noconfirm"]);

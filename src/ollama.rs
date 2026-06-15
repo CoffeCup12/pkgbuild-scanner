@@ -244,9 +244,10 @@ mod tests {
 
         Mock::given(method("POST"))
             .and(path(TEST_ENDPOINT_PATH))
-            .respond_with(ResponseTemplate::new(200).set_body_json(
-                serde_json::json!({"response": "garbage without verdict"}),
-            ))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"response": "garbage without verdict"})),
+            )
             .mount(&server)
             .await;
 
@@ -304,9 +305,10 @@ mod tests {
 
         Mock::given(method("POST"))
             .and(path(TEST_ENDPOINT_PATH))
-            .respond_with(ResponseTemplate::new(200).set_body_json(
-                serde_json::json!({"model": "test-model", "done": true}),
-            ))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"model": "test-model", "done": true})),
+            )
             .mount(&server)
             .await;
 
@@ -342,9 +344,10 @@ mod tests {
 
         Mock::given(method("POST"))
             .and(path(TEST_ENDPOINT_PATH))
-            .respond_with(ResponseTemplate::new(200).set_body_json(
-                serde_json::json!({"response": "VERDICT: CLEAN\n"}),
-            ))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"response": "VERDICT: CLEAN\n"})),
+            )
             .expect(1)
             .mount(&server)
             .await;

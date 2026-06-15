@@ -1,7 +1,6 @@
 /// Built-in security audit prompt for PKGBUILD analysis via Ollama.
 ///
 /// Use `get_prompt(config)` to retrieve the prompt, respecting user overrides.
-
 use crate::types::Config;
 
 /// Default comprehensive security audit prompt for PKGBUILD analysis.
@@ -35,7 +34,11 @@ pub const DEFAULT_PROMPT: &str = concat!(
 /// If `config.ollama.prompt_override` is `Some`, returns that value.
 /// Otherwise returns [`DEFAULT_PROMPT`].
 pub fn get_prompt(config: &Config) -> &str {
-    config.ollama.prompt_override.as_deref().unwrap_or(DEFAULT_PROMPT)
+    config
+        .ollama
+        .prompt_override
+        .as_deref()
+        .unwrap_or(DEFAULT_PROMPT)
 }
 
 #[cfg(test)]

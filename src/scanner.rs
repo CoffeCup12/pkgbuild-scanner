@@ -28,23 +28,14 @@ impl Scanner {
     pub fn new(config: &Config) -> Self {
         Self {
             aur: AurClient::new(),
-            ollama: OllamaClient::new(
-                config.ollama.endpoint.clone(),
-                config.ollama.model.clone(),
-            ),
+            ollama: OllamaClient::new(config.ollama.endpoint.clone(), config.ollama.model.clone()),
             cache: FileCache::new(),
             prompt: prompt::get_prompt(config).to_string(),
         }
     }
 
-    pub async fn scan_packages(
-        &self,
-        package_names: &[&str],
-    ) -> Result<Vec<PackageScan>, String> {
-        let results = self
-            .aur
-            .fetch_pkgbuilds(&self.cache, package_names)
-            .await?;
+    pub async fn scan_packages(&self, package_names: &[&str]) -> Result<Vec<PackageScan>, String> {
+        let results = self.aur.fetch_pkgbuilds(&self.cache, package_names).await?;
 
         // Phase 1: Build scan results map, deduplicating by PackageBase
         let mut scan_map: HashMap<String, ScanResult> = HashMap::new();
@@ -66,9 +57,7 @@ impl Scanner {
                                 self.cache.store_result(base, &pkg.version, &scan_result);
                                 scan_result
                             }
-                            Err(e) => {
-                                ScanResult::Error(format!("Ollama scan failed: {e}"))
-                            }
+                            Err(e) => ScanResult::Error(format!("Ollama scan failed: {e}")),
                         }
                     }
                 }
@@ -77,8 +66,9 @@ impl Scanner {
                     self.cache
                         .check_cache(base, &pkg.version)
                         .unwrap_or_else(|| {
-                            ScanResult::Error("cache inconsistency: cache hit but result missing"
-                                .to_string())
+                            ScanResult::Error(
+                                "cache inconsistency: cache hit but result missing".to_string(),
+                            )
                         })
                 }
             };
@@ -93,12 +83,9 @@ impl Scanner {
                 name: pkg.name.clone(),
                 base: pkg.package_base.clone(),
                 version: pkg.version.clone(),
-                result: scan_map
-                    .get(&pkg.package_base)
-                    .cloned()
-                    .unwrap_or_else(|| {
-                        ScanResult::Error("internal error: scan result missing".to_string())
-                    }),
+                result: scan_map.get(&pkg.package_base).cloned().unwrap_or_else(|| {
+                    ScanResult::Error("internal error: scan result missing".to_string())
+                }),
                 decision: None,
             })
             .collect();
@@ -106,10 +93,7 @@ impl Scanner {
         Ok(packages)
     }
 
-    pub async fn scan_packages_batch(
-        &self,
-        names: &[&str],
-    ) -> Result<Vec<PackageScan>, String> {
+    pub async fn scan_packages_batch(&self, names: &[&str]) -> Result<Vec<PackageScan>, String> {
         self.scan_packages(names).await
     }
 }
@@ -157,8 +141,8 @@ mod tests {
 
         let mut gz_vec = Vec::new();
         {
-            use flate2::write::GzEncoder;
             use flate2::Compression;
+            use flate2::write::GzEncoder;
             let mut encoder = GzEncoder::new(&mut gz_vec, Compression::default());
             encoder.write_all(&tar_data).unwrap();
             encoder.finish().unwrap();
@@ -434,9 +418,10 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/api/generate"))
             .and(wiremock::matchers::body_string_contains("pkg-ok"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(
-                serde_json::json!({"response": "VERDICT: CLEAN\n"}),
-            ))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"response": "VERDICT: CLEAN\n"})),
+            )
             .expect(1)
             .mount(&server)
             .await;
