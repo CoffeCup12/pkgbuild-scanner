@@ -3,6 +3,7 @@
 //! Uses `reqwest` for HTTP, `flate2` + `tar` for tarball extraction,
 //! and `tempfile` for auto-cleaned temporary directories.
 
+use crate::cache::FileCache;
 use crate::types::{AurPackage, AurRpcResponse};
 use flate2::read::GzDecoder;
 use std::collections::{HashMap, HashSet};
@@ -106,29 +107,42 @@ impl AurClient {
         Ok(content)
     }
 
-    /// Query package info and download PKGBUILDs for the given package names.
+    /// Query package info and (optionally) download PKGBUILDs for the given
+    /// package names.
+    ///
+    /// For each unique `PackageBase` the cache is checked first. If a
+    /// cache entry exists with a matching version the download is skipped
+    /// and `None` is returned as the PKGBUILD text. On a cache miss the
+    /// tarball is downloaded and extracted as before, returning `Some(text)`.
     ///
     /// Deduplicates by `PackageBase`: if two packages share the same base,
-    /// the tarball is downloaded only once but the PKGBUILD content is
-    /// associated with both packages.
+    /// the tarball is downloaded only once.
     pub async fn fetch_pkgbuilds(
         &self,
+        cache: &FileCache,
         names: &[&str],
-    ) -> Result<Vec<(AurPackage, String)>, String> {
+    ) -> Result<Vec<(AurPackage, Option<String>)>, String> {
         let packages = self.query_packages(names).await?;
 
-        let mut results: Vec<(AurPackage, String)> = Vec::with_capacity(packages.len());
+        let mut results: Vec<(AurPackage, Option<String>)> =
+            Vec::with_capacity(packages.len());
         let mut downloaded: HashSet<String> = HashSet::new();
         let mut base_to_pkgbuild: HashMap<String, String> = HashMap::new();
 
         for pkg in packages {
             let base = pkg.package_base.clone();
             if !downloaded.contains(&base) {
-                let content = self.download_and_extract_pkgbuild(&pkg.url_path).await?;
-                base_to_pkgbuild.insert(base.clone(), content);
-                downloaded.insert(base);
+                // Check cache first — skip download on a hit.
+                if let Some(_result) = cache.check_cache(&base, &pkg.version) {
+                    downloaded.insert(base);
+                } else {
+                    let content =
+                        self.download_and_extract_pkgbuild(&pkg.url_path).await?;
+                    base_to_pkgbuild.insert(base.clone(), content);
+                    downloaded.insert(base);
+                }
             }
-            let content = base_to_pkgbuild.get(&pkg.package_base).cloned().unwrap();
+            let content = base_to_pkgbuild.get(&pkg.package_base).cloned();
             results.push((pkg, content));
         }
 
@@ -430,17 +444,75 @@ mod tests {
             .mount(&server)
             .await;
 
+        // Use an empty cache — all packages will be cache-miss → download
+        let cache_dir = tempfile::tempdir().unwrap();
+        let cache = FileCache::with_dir(cache_dir.path().to_path_buf());
+
         let client = test_client(&server);
         let results = client
-            .fetch_pkgbuilds(&["libfoo", "libfoo-dev"])
+            .fetch_pkgbuilds(&cache, &["libfoo", "libfoo-dev"])
             .await
             .unwrap();
 
         assert_eq!(results.len(), 2, "should return one entry per input package");
         assert_eq!(results[0].0.name, "libfoo");
         assert_eq!(results[1].0.name, "libfoo-dev");
-        assert!(results[0].1.contains("pkgbase=shared-lib"));
-        assert!(results[1].1.contains("pkgbase=shared-lib"));
+        // Cache miss → PKGBUILD text is Some(...)
+        assert!(results[0].1.as_ref().unwrap().contains("pkgbase=shared-lib"));
+        assert!(results[1].1.as_ref().unwrap().contains("pkgbase=shared-lib"));
+    }
+
+    // ── fetch_pkgbuilds cache hit ─────────────────────────────────────────────
+
+    /// Pre-populate the cache, then call fetch_pkgbuilds — the download
+    /// endpoint must NOT be hit and PKGBUILD text must be None.
+    #[tokio::test]
+    async fn test_fetch_pkgbuilds_cache_hit() {
+        let server = MockServer::start().await;
+
+        // Single package returned by RPC
+        let info_body = serde_json::json!({
+            "results": [
+                {
+                    "Name": "cached-pkg",
+                    "PackageBase": "cached-base",
+                    "Version": "1.0-1",
+                    "URLPath": "/cgit/aur.git/snapshot/cached-base.tar.gz",
+                    "Description": "Already cached package"
+                }
+            ]
+        });
+
+        Mock::given(method("GET"))
+            .and(path("/rpc/v5/info"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(info_body))
+            .mount(&server)
+            .await;
+
+        // Explicitly assert that the tarball endpoint is NEVER called
+        // (because the cache should be hit first).
+        Mock::given(method("GET"))
+            .and(path("/cgit/aur.git/snapshot/cached-base.tar.gz"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![]))
+            .expect(0)
+            .mount(&server)
+            .await;
+
+        // Pre-populate the cache with a matching version
+        let cache_dir = tempfile::tempdir().unwrap();
+        let cache = FileCache::with_dir(cache_dir.path().to_path_buf());
+        cache.put("cached-base", "1.0-1", &crate::types::ScanResult::Clean);
+
+        let client = test_client(&server);
+        let results = client
+            .fetch_pkgbuilds(&cache, &["cached-pkg"])
+            .await
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0.name, "cached-pkg");
+        // Cache hit → PKGBUILD text is None
+        assert!(results[0].1.is_none());
     }
 }
 

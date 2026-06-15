@@ -74,6 +74,22 @@ impl FileCache {
         }
     }
 
+    /// Thin public wrapper around [`Self::get`].
+    ///
+    /// Returns `Some(result)` if a cache entry exists and the version matches.
+    /// This is the API that the scanner orchestrator (Task 9) will call.
+    pub fn check_cache(&self, package_base: &str, version: &str) -> Option<ScanResult> {
+        self.get(package_base, version)
+    }
+
+    /// Thin public wrapper around [`Self::put`].
+    ///
+    /// Stores a scan result in the cache keyed by package base and version.
+    /// This is the API that the scanner orchestrator (Task 9) will call.
+    pub fn store_result(&self, package_base: &str, version: &str, result: &ScanResult) {
+        self.put(package_base, version, result);
+    }
+
     /// Remove the cache file for a given package base.
     ///
     /// This is a no-op if the file does not exist.

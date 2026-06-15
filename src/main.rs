@@ -1,5 +1,7 @@
 pub mod cache;
 pub mod aur;
+pub mod extract;
+pub mod ollama;
 pub mod prompt;
 pub mod version;
 

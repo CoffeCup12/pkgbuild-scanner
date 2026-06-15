@@ -64,3 +64,36 @@
 - Integration tests gated behind `#[cfg(all(test, feature = "integration"))]` with `[features] integration = []` in Cargo.toml
 - `reqwest::get()` avoided in favour of `self.client.get()` for testability (custom base_url for wiremock)
 - `GzEncoder::finish()` consumes the encoder and returns the inner writer; with `&mut Vec<u8>` as writer, the vec is mutated in-place, so the vec variable is still accessible after the encoder's scope ends
+
+## Task 11 — Cache integration with scanner (src/cache.rs + src/aur.rs)
+- `FileCache` now has `check_cache()` and `store_result()` — thin public wrappers around `get()`/`put()` for the scanner orchestrator (Task 9)
+- `fetch_pkgbuilds()` signature changed to `(&self, cache: &FileCache, names: &[&str]) -> Result<Vec<(AurPackage, Option<String>)>, String>`
+- Cache check happens per unique `PackageBase` before download; on hit, `None` is returned as PKGBUILD text (skip), on miss `Some(text)` is returned
+- Test pattern for cache hit: create `FileCache` with `tempdir`, pre-populate with `cache.put()`, mount tarball mock with `.expect(0)` to assert download is never called
+- Tests must pass `&cache` argument to `fetch_pkgbuilds`; existing dedup test uses empty cache (cache miss → download as before)
+
+## Task 10 — PKGBUILD extraction + validation (src/extract.rs)
+- `extract_pkgbuild()`: opens `.tar.gz` via `File::open` → `GzDecoder::new` → `tar::Archive::new`, iterates entries, checks `entry_path.file_name() == Some(OsStr::new("PKGBUILD"))` — handles both `{pkgbase}/PKGBUILD` and flat `PKGBUILD`
+- Entry content read with `entry.read_to_string(&mut content)` — never sources/executes the PKGBUILD
+- `validate_pkgbuild()`: checks non-empty, under 10MB, contains at least one of `pkgname=`, `pkgver=`, `source=`, `makedepends=`, `depends=` (via `str::contains`)
+- `cleanup_temp_dir()`: uses `std::fs::remove_dir_all(dir)` with `let _ =` to silently ignore all errors (race-safe for temp cleanup)
+- Test helper `create_tarball()` builds tar.gz in-memory using `tar::Builder` wrapping `GzEncoder::new(File::create(...))` — writes directly to a temp file
+- Entry type distinction in helper: empty byte slice → `EntryType::Directory`; non-empty → `EntryType::Regular`
+- Flat tarball test (`test_extract_flat_pkgbuild`) covers case where PKGBUILD is at archive root (no subdirectory)
+- 11 unit tests in the module, all pass
+
+## Task 8 — Ollama HTTP client (src/ollama.rs)
+- `OllamaClient` stores `reqwest::Client`, `endpoint: String`, `model: String`
+- `new()` constructor uses `reqwest::Client::builder().timeout(Duration::from_secs(120))` for 120s timeout
+- `with_client()` alternate constructor accepts pre-built `reqwest::Client` for wiremock testing (avoids 120s timeout on mocked requests)
+- `scan()` sends POST to `{endpoint}/api/generate` with JSON body `{"model", "prompt", "stream": false}` using `serde_json::json!()` macro
+- Prompt format: `"{prompt}\n\nPKGBUILD:\n```\n{pkgbuild}\n```"` — always wraps PKGBUILD in context
+- Response parsing: `serde_json::Value` → `response["response"].as_str()` → `parse_verdict()` static method
+- `parse_verdict()` checks for `VERDICT: CLEAN` or `VERDICT: SUSPICIOUS` at the **very start** of response text (case-sensitive)
+- FINDING extraction: `.lines().filter(|line| line.starts_with("FINDING:"))` → trim prefix + whitespace
+- Unparseable responses return `Ok(ScanResult::Error("unparseable response"))` — never panics
+- Wiremock test helper: `OllamaClient::with_client(reqwest::Client::new(), server.uri(), "test-model".into())`
+- 13 unit tests: 5 `parse_verdict` (pure logic), 8 `scan` integration (wiremock + connection refused)
+- Missing `"response"` field → `Err` (not `ScanResult::Error`)
+- Malformed JSON → `Err`
+- Connection refused test uses `http://127.0.0.1:19999` with 1s timeout client
