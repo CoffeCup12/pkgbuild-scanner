@@ -310,14 +310,14 @@ mod tests {
         let toml_str = r#"
 [ollama]
 model = "llama3"
-endpoint = "http://localhost:11434"
+endpoint = "http://127.0.0.1:11434"
 
 [cache]
 ttl_hours = 24
 "#;
         let config: Config = toml::from_str(toml_str).expect("Config should deserialise from TOML");
         assert_eq!(config.ollama.model, "llama3");
-        assert_eq!(config.ollama.endpoint, "http://localhost:11434");
+        assert_eq!(config.ollama.endpoint, "http://127.0.0.1:11434");
         assert!(config.ollama.prompt_override.is_none());
         assert_eq!(config.cache.ttl_hours, 24);
     }
@@ -328,7 +328,7 @@ ttl_hours = 24
         let toml_str = r#"
 [ollama]
 model = "codellama"
-endpoint = "http://localhost:11434"
+endpoint = "http://127.0.0.1:11434"
 prompt_override = "Analyse this PKGBUILD for safety issues."
 
 [cache]

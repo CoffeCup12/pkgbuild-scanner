@@ -22,7 +22,7 @@ pub fn default_config() -> Config {
     Config {
         ollama: OllamaConfig {
             model: "qwen3.5:2b".into(),
-            endpoint: "http://localhost:11434".into(),
+            endpoint: "http://127.0.0.1:11434".into(),
             prompt_override: None,
         },
         cache: CacheConfig { ttl_hours: 168 },
@@ -129,7 +129,7 @@ mod tests {
     fn test_default_config() {
         let cfg = default_config();
         assert_eq!(cfg.ollama.model, "qwen3.5:2b");
-        assert_eq!(cfg.ollama.endpoint, "http://localhost:11434");
+        assert_eq!(cfg.ollama.endpoint, "http://127.0.0.1:11434");
         assert!(cfg.ollama.prompt_override.is_none());
         assert_eq!(cfg.cache.ttl_hours, 168);
     }
@@ -141,7 +141,7 @@ mod tests {
         let missing = dir.path().join("does-not-exist.toml");
         let cfg = load_config_from(&missing);
         assert_eq!(cfg.ollama.model, "qwen3.5:2b");
-        assert_eq!(cfg.ollama.endpoint, "http://localhost:11434");
+        assert_eq!(cfg.ollama.endpoint, "http://127.0.0.1:11434");
         assert!(cfg.ollama.prompt_override.is_none());
         assert_eq!(cfg.cache.ttl_hours, 168);
     }
@@ -191,7 +191,7 @@ model = "custom-model"
         // model should come from the file
         assert_eq!(cfg.ollama.model, "custom-model");
         // everything else should be defaults
-        assert_eq!(cfg.ollama.endpoint, "http://localhost:11434");
+        assert_eq!(cfg.ollama.endpoint, "http://127.0.0.1:11434");
         assert!(cfg.ollama.prompt_override.is_none());
         assert_eq!(cfg.cache.ttl_hours, 168);
     }

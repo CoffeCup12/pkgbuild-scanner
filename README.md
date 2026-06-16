@@ -19,7 +19,7 @@ evasive techniques that no static rule would match.
 
 - Rust 1.85 or later
 - [Ollama](https://ollama.com) running locally (default endpoint:
-  `http://localhost:11434`)
+  `http://127.0.0.1:11434`)
 - An Ollama model pulled (default: `qwen3.5:2b`)
 - `yay` installed on the system
 
@@ -80,7 +80,7 @@ you want to override.
 
 [ollama]
 model = "qwen3.5:2b"              # any Ollama model you have pulled
-endpoint = "http://localhost:11434"  # Ollama server URL
+endpoint = "http://127.0.0.1:11434"  # Ollama server URL
 
 # Optional: replace the built-in security prompt entirely.
 # prompt_override = "Your custom audit instructions here..."

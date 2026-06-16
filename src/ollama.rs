@@ -25,6 +25,7 @@ impl OllamaClient {
     /// to accommodate slow model responses.
     pub fn new(endpoint: String, model: String) -> Self {
         let client = reqwest::Client::builder()
+            .no_proxy()
             .timeout(std::time::Duration::from_secs(120))
             .build()
             .expect("reqwest::Client should build with valid config");
