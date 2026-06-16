@@ -21,7 +21,7 @@ pub fn has_suspicious(scans: &[PackageScan]) -> bool {
 ///
 /// Rules:
 /// - `Clean` → auto-approve (no prompt)
-/// - `Error` → auto-reject (no prompt)
+/// - `Error` → show error, prompt [y/N] to proceed without scan (default No)
 /// - `Suspicious` → display findings, prompt [y/N] (default No)
 pub fn present_findings_with_reader<R: BufRead>(
     scans: &[PackageScan],
@@ -36,8 +36,27 @@ pub fn present_findings_with_reader<R: BufRead>(
                 decisions.push(UserDecision::Approve);
             }
             ScanResult::Error(msg) => {
-                println!("\x1b[31m✗\x1b[0m {}: error — rejected ({})", scan.name, msg);
-                decisions.push(UserDecision::Reject);
+                println!(
+                    "\x1b[31m✗\x1b[0m {} ({}): scan error — {}",
+                    scan.name, scan.version, msg
+                );
+                print!("Proceed without scan? [y/N] ");
+                std::io::stdout().flush().expect("flush stdout");
+
+                let mut input = String::new();
+                reader.read_line(&mut input).expect("read input");
+                let approved = input.trim().eq_ignore_ascii_case("y");
+
+                if approved {
+                    println!(
+                        "\x1b[33m⚠\x1b[0m {}: proceeding without scan",
+                        scan.name
+                    );
+                    decisions.push(UserDecision::Approve);
+                } else {
+                    println!("\x1b[31m✗\x1b[0m {}: rejected", scan.name);
+                    decisions.push(UserDecision::Reject);
+                }
             }
             ScanResult::Suspicious { findings } => {
                 println!(
