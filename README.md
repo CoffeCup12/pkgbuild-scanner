@@ -24,13 +24,13 @@ Instead of using hard coded patterns,  pkgbuild-scanner sends the full PKGBUILD 
 ### Method 1: cargo install
 
 ```bash
-cargo install --git https://github.com/shao/pkgbuild-scanner
+cargo install --git https://github.com/CoffeCup12/pkgbuild-scanner.git
 ```
 
 ### Method 2: build from source
 
 ```bash
-git clone https://github.com/shao/pkgbuild-scanner
+git clone https://github.com/CoffeCup12/pkgbuild-scanner.git
 cd pkgbuild-scanner
 cargo build --release
 sudo cp target/release/pkgbuild-scanner /usr/local/bin/
@@ -160,13 +160,13 @@ Contributions, issues, and feature requests are welcome.
 
 Inspired by existing AUR security tooling:
 
-- [aur-guard](https://github.com/faeraa/aur-guard) -- Rust, 38 rules,
+- [aur-guard](https://github.com/prietus/aur-guard) -- Rust, 38 rules,
   pre-build shim + pacman hook
-- [ks-aur-scanner](https://github.com/ks2041/ks-aur-scanner) -- Rust,
+- [ks-aur-scanner](https://github.com/KiefStudioMA/ks-aur-scanner) -- Rust,
   50+ patterns, SARIF output
-- [traur](https://github.com/pjones/plasma-manager) -- Rust, 12 feature
+- [traur](https://github.com/Sohimaster/traur) -- Rust, 12 feature
   dimensions, trust scoring, ALPM hook
-- [lime](https://github.com/Calandracas606/lime) -- Python, wraps
+- [lime](https://github.com/pachkakirieshek/lime) -- Python, wraps
   paru/yay, Bubblewrap sandbox
 
 Thanks to the Metis research team for their work on LLM-based malware
