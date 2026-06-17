@@ -74,7 +74,15 @@ impl OllamaClient {
             .json(&body)
             .send()
             .await
-            .map_err(|e| format!("Ollama request failed: {e}"))?;
+            .map_err(|e| {
+                if e.is_timeout() {
+                    format!("Ollama request timed out after 120s")
+                } else if e.is_connect() {
+                    format!("Ollama connection refused or unreachable: {e}")
+                } else {
+                    format!("Ollama request failed: {e}")
+                }
+            })?;
 
         if !resp.status().is_success() {
             return Err(format!("Ollama returned HTTP {}", resp.status()));

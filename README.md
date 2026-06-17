@@ -9,11 +9,7 @@ ones get flagged with specific findings for you to review.
 
 ## Why LLM-based?
 
-Existing AUR scanners (aur-guard, ks-aur-scanner, traur) use hand-written
-rule sets or pattern matchers. These catch known bad patterns but miss
-novel or obfuscated malware. pkgbuild-scanner sends the full PKGBUILD to
-an Ollama-hosted LLM, which can reason about intent and recognize
-evasive techniques that no static rule would match.
+Instead of using hard coded patterns,  pkgbuild-scanner sends the full PKGBUILD to an Ollama-hosted LLM, which can reason about intent and recognize evasive techniques that no static rule would match.
 
 ## Prerequisites
 
