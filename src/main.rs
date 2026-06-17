@@ -13,6 +13,7 @@ pub mod version;
 mod types;
 
 use clap::Parser;
+use std::collections::HashSet;
 use std::process::ExitCode;
 
 // ─── CLI definition ───────────────────────────────────────────────────────────
@@ -51,30 +52,39 @@ async fn main() -> ExitCode {
 
     match route(&cli.args) {
         Command::Install(packages) => {
-            // ── Install mode ──────────────────────────────────────────────────
-            // 1.  Load configuration and create the scanner pipeline.
             let config = crate::config::load_or_default();
             let scanner = crate::scanner::Scanner::new(&config);
 
-            // 2.  Scan each AUR package (names already extracted by route()).
             let package_names: Vec<&str> = packages.iter().map(|s| s.as_str()).collect();
 
             match scanner.scan_packages_batch(&package_names).await {
                 Ok(mut results) => {
-                    let decisions = crate::interactive::present_findings(&results);
-                    crate::interactive::print_summary(&results, &decisions);
+                    let mut approved: Vec<String> = if results.is_empty() {
+                        // No AUR packages to scan — skip interactive prompts.
+                        Vec::new()
+                    } else {
+                        let decisions = crate::interactive::present_findings(&results);
+                        crate::interactive::print_summary(&results, &decisions);
 
-                    // Apply decisions back to scans
-                    for (scan, decision) in results.iter_mut().zip(decisions.iter()) {
-                        scan.decision = Some(decision.clone());
+                        for (scan, decision) in results.iter_mut().zip(decisions.iter()) {
+                            scan.decision = Some(decision.clone());
+                        }
+
+                        results
+                            .iter()
+                            .filter(|s| s.decision == Some(UserDecision::Approve))
+                            .map(|s| s.name.clone())
+                            .collect()
+                    };
+
+                    // Packages not found in the AUR are official-repo packages.
+                    // Forward them directly to yay without scanning.
+                    let scanned: HashSet<&str> = results.iter().map(|s| s.name.as_str()).collect();
+                    for name in &packages {
+                        if !scanned.contains(name.as_str()) {
+                            approved.push(name.to_string());
+                        }
                     }
-
-                    // Filter approved packages
-                    let approved: Vec<String> = results
-                        .iter()
-                        .filter(|s| s.decision == Some(UserDecision::Approve))
-                        .map(|s| s.name.clone())
-                        .collect();
 
                     if approved.is_empty() {
                         println!("No packages approved. Nothing to install.");
