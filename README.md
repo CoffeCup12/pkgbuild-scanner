@@ -171,3 +171,4 @@ Inspired by existing AUR security tooling:
 
 Thanks to the Metis research team for their work on LLM-based malware
 detection in package ecosystems.
+
