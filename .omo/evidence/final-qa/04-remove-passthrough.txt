@@ -1,8 +1,0 @@
-TEST 4: Run remove command (passthrough to real yay)
-Mock: /tmp/yay script that echoes "PASSTHROUGH $*" and exits 0
-Command: PATH=/tmp:$PATH cargo run --release -- -R testpkg
-Result: PASS
-Output:
-  PASSTHROUGH -R testpkg
-Exit code: 0
-Verified: passthrough delegates correctly to the real yay binary found in PATH.

@@ -1,2 +1,0 @@
-# Problems — pkgbuild-scanner
-
