@@ -132,6 +132,12 @@ impl DiffGenerator {
     }
 }
 
+impl Default for DiffGenerator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Git helpers (private — shells out to system `git` like aur-fetch does)
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -141,6 +147,15 @@ fn git_ref_exists(repo_path: &Path, ref_name: &str) -> bool {
     Command::new("git")
         .current_dir(repo_path)
         .args(["rev-parse", "--verify", ref_name])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+#[cfg(test)]
+pub(crate) fn git_available() -> bool {
+    Command::new("git")
+        .args(["--version"])
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
@@ -268,6 +283,10 @@ mod tests {
 
     #[test]
     fn test_generate_diff_with_known_changes() {
+        // Requires system git — skip if missing (e.g. CI without git)
+        if !git_available() {
+            return;
+        }
         let (_tmp, dg, repo) = setup_test_env("testpkg");
 
         // Let aur-fetch clone v1 into clone_dir
@@ -302,6 +321,10 @@ mod tests {
 
     #[test]
     fn test_is_first_time_flag() {
+        // Requires system git — skip if missing (e.g. CI without git)
+        if !git_available() {
+            return;
+        }
         let (_tmp, dg, repo) = setup_test_env("firstpkg");
 
         // aur-fetch clones — no AUR_SEEN anywhere
@@ -317,6 +340,10 @@ mod tests {
 
     #[test]
     fn test_seen_package_flag() {
+        // Requires system git — skip if missing (e.g. CI without git)
+        if !git_available() {
+            return;
+        }
         let (_tmp, dg, repo) = setup_test_env("seenpkg");
 
         // Let aur-fetch clone first
@@ -339,6 +366,10 @@ mod tests {
 
     #[test]
     fn test_commit_hash_extraction() {
+        // Requires system git — skip if missing (e.g. CI without git)
+        if !git_available() {
+            return;
+        }
         let (_tmp, dg, repo) = setup_test_env("hashpkg");
 
         let result = diff_one(&dg, &repo, "hashpkg").unwrap();

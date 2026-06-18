@@ -76,7 +76,7 @@ impl OllamaClient {
             .await
             .map_err(|e| {
                 if e.is_timeout() {
-                    format!("Ollama request timed out after 120s")
+                    "Ollama request timed out after 120s".to_string()
                 } else if e.is_connect() {
                     format!("Ollama connection refused or unreachable: {e}")
                 } else {
