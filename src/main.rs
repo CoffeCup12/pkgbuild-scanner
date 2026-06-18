@@ -49,11 +49,13 @@ async fn main() -> ExitCode {
     }
 
     use crate::routes::{Command, route};
-    use crate::types::UserDecision;
+    use crate::types::{Backend, UserDecision};
+
+    let config = crate::config::load_or_default();
+    let backend = crate::config::detect_backend(&config);
 
     match route(&cli.args) {
         Command::Install(packages) => {
-            let config = crate::config::load_or_default();
             let scanner = crate::scanner::Scanner::new(&config);
 
             let package_names: Vec<&str> = packages.iter().map(|s| s.as_str()).collect();
@@ -79,7 +81,7 @@ async fn main() -> ExitCode {
                     };
 
                     // Packages not found in the AUR are official-repo packages.
-                    // Forward them directly to yay without scanning.
+                    // Forward them directly to the helper without scanning.
                     let scanned: HashSet<&str> = results.iter().map(|s| s.name.as_str()).collect();
                     for name in &packages {
                         if !scanned.contains(name.as_str()) {
@@ -93,7 +95,10 @@ async fn main() -> ExitCode {
                     }
 
                     let cmd = exec::build_install_command(&approved, &cli.args);
-                    return exec::delegate_to_yay(&cmd);
+                    return match backend {
+                        Backend::Paru => exec::delegate_to_paru(&cmd),
+                        Backend::Yay => exec::delegate_to_yay(&cmd),
+                    };
                 }
                 Err(e) => {
                     eprintln!("error: scan failed: {e}");
@@ -104,13 +109,19 @@ async fn main() -> ExitCode {
         Command::Update => {
             // ── Update mode ────────────────────────────────────────────────────
             // TODO (T14): scan all cached packages for system upgrade.
-            // For now, delegate directly to real yay (no package filtering yet).
-            return exec::delegate_to_yay(args);
+            // For now, delegate directly to real helper (no package filtering yet).
+            return match backend {
+                Backend::Paru => exec::delegate_to_paru(args),
+                Backend::Yay => exec::delegate_to_yay(args),
+            };
         }
         Command::Passthrough(_passthrough_args) => {
             // ── Passthrough mode ───────────────────────────────────────────────
-            // Forward everything verbatim to the real yay.
-            return exec::delegate_to_yay(args);
+            // Forward everything verbatim to the real helper.
+            return match backend {
+                Backend::Paru => exec::delegate_to_paru(args),
+                Backend::Yay => exec::delegate_to_yay(args),
+            };
         }
     }
 }

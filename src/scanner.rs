@@ -1104,4 +1104,219 @@ mod tests {
         assert_eq!(results[0].base, "yay-reg-base");
         assert!(matches!(results[0].result, ScanResult::Clean));
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // End-to-end paru-mode tests (Task 9)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// Full end-to-end pipeline:
+    /// 1. Scan 2 packages sharing a PackageBase → dedup → 1 Ollama call
+    /// 2. Verify results cached with paru cache keys
+    /// 3. Re-scan the same packages → cache hit → 0 Ollama calls
+    #[tokio::test]
+    async fn test_paru_mode_end_to_end() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cache_dir = tempfile::tempdir().unwrap();
+        let pkgbase = "shared-lib";
+        let pkgbuild_content =
+            "# Maintainer: Shared\npkgname=libfoo\npkgver=3.0\npkgrel=1\n";
+
+        // Set up shared git upstream
+        let bare_root = tmp.path().join("bare");
+        std::fs::create_dir_all(&bare_root).unwrap();
+        let upstream = bare_root.join(pkgbase);
+        std::fs::create_dir_all(&upstream).unwrap();
+        git(&upstream, &["init", "--bare", "--initial-branch=master"]);
+
+        let work = tmp.path().join("work");
+        std::fs::create_dir_all(&work).unwrap();
+        git(&work, &["init", "--initial-branch=master"]);
+        std::fs::write(work.join("PKGBUILD"), pkgbuild_content).unwrap();
+        git(&work, &["add", "PKGBUILD"]);
+        git(&work, &["commit", "-m", "v1: shared-lib PKGBUILD"]);
+        git(
+            &work,
+            &[
+                "remote",
+                "add",
+                "origin",
+                &format!("file://{}", upstream.display()),
+            ],
+        );
+        git(&work, &["push", "-u", "origin", "master"]);
+
+        let clone_dir = tmp.path().join("paru-clone");
+        let aur_url_str = format!("file://{}", bare_root.display());
+
+        let mk_dg = || {
+            let mut fetch = Fetch::with_combined_cache_dir(&clone_dir);
+            fetch.aur_url = aur_url_str.parse().unwrap();
+            DiffGenerator { fetch }
+        };
+
+        fn aur_rpc_body() -> serde_json::Value {
+            serde_json::json!({"results": [
+                {
+                    "Name": "libfoo",
+                    "PackageBase": "shared-lib",
+                    "Version": "3.0-1",
+                    "URLPath": "/cgit/aur.git/snapshot/shared-lib.tar.gz",
+                    "Description": "Library foo"
+                },
+                {
+                    "Name": "libfoo-dev",
+                    "PackageBase": "shared-lib",
+                    "Version": "3.0-1",
+                    "URLPath": "/cgit/aur.git/snapshot/shared-lib.tar.gz",
+                    "Description": "Library foo dev headers"
+                }
+            ]})
+        }
+
+        // ── First scan: 2 packages, shared base → dedup → 1 Ollama call ──
+        {
+            let server = MockServer::start().await;
+
+            // AUR RPC with .expect(1) — exactly one call for both packages
+            Mock::given(method("GET"))
+                .and(path("/rpc/v5/info"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(aur_rpc_body()))
+                .expect(1)
+                .mount(&server)
+                .await;
+
+            // Dedup: 2 packages, same base → 1 Ollama call
+            mount_ollama_clean(&server, 1).await;
+
+            let scanner = test_scanner_paru(&server, cache_dir.path(), mk_dg());
+            let results = scanner
+                .scan_packages(&["libfoo", "libfoo-dev"])
+                .await
+                .unwrap();
+
+            assert_eq!(results.len(), 2);
+            assert_eq!(results[0].name, "libfoo");
+            assert_eq!(results[0].base, pkgbase);
+            assert_eq!(results[0].version, "3.0-1");
+            assert!(matches!(results[0].result, ScanResult::Clean));
+
+            assert_eq!(results[1].name, "libfoo-dev");
+            assert_eq!(results[1].base, pkgbase);
+            assert_eq!(results[1].version, "3.0-1");
+            assert!(matches!(results[1].result, ScanResult::Clean));
+
+            // Verify results cached with paru cache keys
+            let dg = mk_dg();
+            let diff_result = dg.generate_diff(pkgbase).unwrap();
+            let commit_hash = diff_result.commit_hash.as_deref();
+            let cached = scanner
+                .cache
+                .get_paru_result(pkgbase, "3.0-1", commit_hash);
+            assert!(
+                matches!(cached, Some(ScanResult::Clean)),
+                "Expected cached Clean result, got {cached:?}"
+            );
+        }
+
+        // ── Second scan: cache hit → 0 Ollama calls ──
+        {
+            let server = MockServer::start().await;
+
+            Mock::given(method("GET"))
+                .and(path("/rpc/v5/info"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(aur_rpc_body()))
+                .expect(1)
+                .mount(&server)
+                .await;
+
+            mount_ollama_clean(&server, 0).await;
+
+            let scanner = test_scanner_paru(&server, cache_dir.path(), mk_dg());
+            let results = scanner
+                .scan_packages(&["libfoo", "libfoo-dev"])
+                .await
+                .unwrap();
+
+            assert_eq!(results.len(), 2);
+            assert!(matches!(results[0].result, ScanResult::Clean));
+            assert!(matches!(results[1].result, ScanResult::Clean));
+        }
+    }
+
+    /// Pre-populate the paru cache directly, then scan → cache hit → 0 Ollama calls.
+    #[tokio::test]
+    async fn test_paru_mode_cache_reuse_e2e() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cache_dir = tempfile::tempdir().unwrap();
+        let pkgbase = "cache-reuse-e2e";
+        let pkgbuild_content =
+            "# Maintainer: CR\npkgname=cache-reuse-e2e\npkgver=1.0\npkgrel=1\n";
+
+        // Set up git upstream
+        let bare_root = tmp.path().join("bare");
+        std::fs::create_dir_all(&bare_root).unwrap();
+        let upstream = bare_root.join(pkgbase);
+        std::fs::create_dir_all(&upstream).unwrap();
+        git(&upstream, &["init", "--bare", "--initial-branch=master"]);
+
+        let work = tmp.path().join("work");
+        std::fs::create_dir_all(&work).unwrap();
+        git(&work, &["init", "--initial-branch=master"]);
+        std::fs::write(work.join("PKGBUILD"), pkgbuild_content).unwrap();
+        git(&work, &["add", "PKGBUILD"]);
+        git(&work, &["commit", "-m", "v1"]);
+        git(
+            &work,
+            &[
+                "remote",
+                "add",
+                "origin",
+                &format!("file://{}", upstream.display()),
+            ],
+        );
+        git(&work, &["push", "-u", "origin", "master"]);
+
+        let clone_dir = tmp.path().join("paru-clone");
+        let aur_url_str = format!("file://{}", bare_root.display());
+
+        let mk_dg = || {
+            let mut fetch = Fetch::with_combined_cache_dir(&clone_dir);
+            fetch.aur_url = aur_url_str.parse().unwrap();
+            DiffGenerator { fetch }
+        };
+
+        // Pre-populate the paru cache: generate diff to get commit hash, then store
+        let dg = mk_dg();
+        let diff_result = dg.generate_diff(pkgbase).unwrap();
+        let commit_hash = diff_result.commit_hash.unwrap();
+
+        let cache = FileCache::with_dir(cache_dir.path().to_path_buf());
+        cache.store_paru_result(pkgbase, "1.0-1", Some(&commit_hash), &ScanResult::Clean);
+
+        // Now scan → should be cache hit → 0 Ollama calls
+        let server = MockServer::start().await;
+
+        mount_aur_rpc(
+            &server,
+            serde_json::json!([{
+                "Name": pkgbase,
+                "PackageBase": pkgbase,
+                "Version": "1.0-1",
+                "URLPath": "/cgit/aur.git/snapshot/cache-reuse-e2e.tar.gz",
+                "Description": "Cache reuse e2e test"
+            }]),
+        )
+        .await;
+
+        mount_ollama_clean(&server, 0).await;
+
+        let scanner = test_scanner_paru(&server, cache_dir.path(), mk_dg());
+        let results = scanner.scan_packages(&[pkgbase]).await.unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, pkgbase);
+        assert_eq!(results[0].base, pkgbase);
+        assert_eq!(results[0].version, "1.0-1");
+        assert!(matches!(results[0].result, ScanResult::Clean));
+    }
 }
