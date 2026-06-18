@@ -30,7 +30,7 @@ pub struct DiffResult {
 /// are shared with the real paru.  This module is **strictly read-only** — it
 /// never touches `AUR_SEEN`, never merges, and never writes diffs.
 pub struct DiffGenerator {
-    fetch: Fetch,
+    pub(crate) fetch: Fetch,
 }
 
 impl DiffGenerator {
@@ -49,6 +49,18 @@ impl DiffGenerator {
         }
     }
 
+    /// Create a `DiffGenerator` with a custom AUR base URL (for testing).
+    pub fn with_aur_url(aur_url: &str) -> Self {
+        let cache_base = dirs::cache_dir()
+            .unwrap_or_else(|| PathBuf::from("/tmp"))
+            .join("paru")
+            .join("clone");
+
+        let mut fetch = Fetch::with_combined_cache_dir(&cache_base);
+        fetch.aur_url = aur_url.parse().expect("invalid aur_url");
+        Self { fetch }
+    }
+
     /// Generate a diff for a single package base.
     ///
     /// # Steps
@@ -63,7 +75,12 @@ impl DiffGenerator {
     /// or `commit()`.  The paru clone state is treated as strictly read-only.
     pub fn generate_diff(&self, pkgbase: &str) -> Result<DiffResult, String> {
         let mut url = self.fetch.aur_url.clone();
-        url.set_path(pkgbase);
+        {
+            let mut segs = url
+                .path_segments_mut()
+                .map_err(|_| "Cannot be a base URL".to_string())?;
+            segs.push(pkgbase);
+        }
         let repos = vec![aur_fetch::Repo {
             url,
             name: pkgbase.to_string(),
