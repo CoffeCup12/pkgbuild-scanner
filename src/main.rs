@@ -1,6 +1,7 @@
 pub mod aur;
 pub mod cache;
 pub mod config;
+pub mod diff;
 pub mod exec;
 pub mod extract;
 pub mod interactive;
