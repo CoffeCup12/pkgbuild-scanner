@@ -11,7 +11,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::types::{CacheConfig, Config, OllamaConfig};
+use crate::types::{Backend, CacheConfig, Config, HelperConfig, OllamaConfig};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Public API
@@ -26,6 +26,7 @@ pub fn default_config() -> Config {
             prompt_override: None,
         },
         cache: CacheConfig { ttl_hours: 168 },
+        helper: HelperConfig::default(),
     }
 }
 
@@ -45,6 +46,31 @@ pub fn load_config() -> Config {
 /// sites that truly cannot fail.
 pub fn load_or_default() -> Config {
     load_config()
+}
+
+/// Determine the AUR helper backend to use.
+///
+/// Priority:
+/// 1. Explicit config — if `config.helper.backend` is `Some(...)`, return it.
+/// 2. Auto-detect — scan `$PATH` for `paru`; if found, use `Backend::Paru`.
+/// 3. Fallback — `Backend::Yay`.
+///
+/// Auto-detect is silent (no stderr warnings) — falling back to `yay` is
+/// normal when no other helper is found.
+pub fn detect_backend(config: &Config) -> Backend {
+    if let Some(ref backend) = config.helper.backend {
+        return backend.clone();
+    }
+
+    let path_var = std::env::var("PATH").unwrap_or_default();
+    for dir in path_var.split(':') {
+        let candidate = std::path::PathBuf::from(dir).join("paru");
+        if candidate.exists() {
+            return Backend::Paru;
+        }
+    }
+
+    Backend::Yay
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -193,6 +219,102 @@ model = "custom-model"
         // everything else should be defaults
         assert_eq!(cfg.ollama.endpoint, "http://127.0.0.1:11434");
         assert!(cfg.ollama.prompt_override.is_none());
+        assert_eq!(cfg.cache.ttl_hours, 168);
+    }
+
+    // ── detect_backend ───────────────────────────────────────────────────────
+
+    /// Explicit config with backend=Paru must return Paru (no PATH scan).
+    #[test]
+    fn test_detect_backend_config_explicit() {
+        let cfg = Config {
+            ollama: OllamaConfig {
+                model: "test".into(),
+                endpoint: "http://127.0.0.1:11434".into(),
+                prompt_override: None,
+            },
+            cache: CacheConfig { ttl_hours: 168 },
+            helper: HelperConfig {
+                backend: Some(Backend::Paru),
+            },
+        };
+        assert_eq!(detect_backend(&cfg), Backend::Paru);
+    }
+
+    /// When config has no explicit backend and `paru` is on PATH, auto-detect
+    /// must return Paru.
+    #[test]
+    fn test_detect_backend_auto_paru_in_path() {
+        let dir = tempdir().unwrap();
+        let paru_path = dir.path().join("paru");
+        std::fs::write(&paru_path, "#!/bin/sh\necho mock paru\n").unwrap();
+
+        let old_path = std::env::var("PATH").unwrap_or_default();
+        // SAFETY: Test-only PATH manipulation; single-threaded test context.
+        unsafe { std::env::set_var("PATH", dir.path().to_str().unwrap()) };
+
+        let cfg = Config {
+            ollama: OllamaConfig {
+                model: "test".into(),
+                endpoint: "http://127.0.0.1:11434".into(),
+                prompt_override: None,
+            },
+            cache: CacheConfig { ttl_hours: 168 },
+            helper: HelperConfig { backend: None },
+        };
+
+        let result = detect_backend(&cfg);
+        // SAFETY: Restoring original PATH; single-threaded test context.
+        unsafe { std::env::set_var("PATH", &old_path) };
+
+        assert_eq!(result, Backend::Paru);
+    }
+
+    /// When config has no explicit backend and `paru` is not on PATH,
+    /// auto-detect must return Yay.
+    #[test]
+    fn test_detect_backend_auto_no_paru() {
+        let old_path = std::env::var("PATH").unwrap_or_default();
+        // SAFETY: Test-only PATH manipulation; single-threaded test context.
+        unsafe { std::env::set_var("PATH", "") };
+
+        let cfg = Config {
+            ollama: OllamaConfig {
+                model: "test".into(),
+                endpoint: "http://127.0.0.1:11434".into(),
+                prompt_override: None,
+            },
+            cache: CacheConfig { ttl_hours: 168 },
+            helper: HelperConfig { backend: None },
+        };
+
+        let result = detect_backend(&cfg);
+        // SAFETY: Restoring original PATH; single-threaded test context.
+        unsafe { std::env::set_var("PATH", &old_path) };
+
+        assert_eq!(result, Backend::Yay);
+    }
+
+    /// A config file with only `[helper]` set must preserve defaults for
+    /// `[ollama]` and `[cache]` sections.
+    #[test]
+    fn test_helper_config_partial() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            r#"
+[helper]
+backend = "paru"
+"#,
+        )
+        .unwrap();
+
+        let cfg = load_config_from(&path);
+        assert_eq!(cfg.helper.backend, Some(Backend::Paru));
+        // Other sections should use defaults
+        assert_eq!(cfg.ollama.model, "qwen3.5:2b");
+        assert_eq!(cfg.ollama.endpoint, "http://127.0.0.1:11434");
         assert_eq!(cfg.cache.ttl_hours, 168);
     }
 }

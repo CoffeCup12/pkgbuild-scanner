@@ -58,6 +58,8 @@ pub struct CacheEntry {
     pub version: String,
     pub result: ScanResult,
     pub scanned_at: DateTime<Utc>,
+    #[serde(default)]
+    pub commit_hash: Option<String>,
 }
 
 // ─── Config types ────────────────────────────────────────────────────────────
@@ -76,11 +78,29 @@ pub struct CacheConfig {
     pub ttl_hours: u32,
 }
 
+/// AUR helper backend to use (e.g. yay, paru).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum Backend {
+    #[serde(rename = "yay")]
+    Yay,
+    #[serde(rename = "paru")]
+    Paru,
+}
+
+/// Settings for the AUR helper backend.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct HelperConfig {
+    #[serde(default)]
+    pub backend: Option<Backend>,
+}
+
 /// Top-level application configuration, read from a TOML file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub ollama: OllamaConfig,
     pub cache: CacheConfig,
+    #[serde(default)]
+    pub helper: HelperConfig,
 }
 
 // ─── Interactive-scan types ──────────────────────────────────────────────────
@@ -204,6 +224,7 @@ mod tests {
                 findings: vec!["uses curl | bash".into(), "hardcoded path /tmp".into()],
             },
             scanned_at: Utc::now(),
+            commit_hash: None,
         };
 
         let json = serde_json::to_string(&entry).expect("CacheEntry should serialise");
@@ -238,6 +259,7 @@ mod tests {
             version: "1.0-1".into(),
             result: ScanResult::Clean,
             scanned_at: Utc::now(),
+            commit_hash: None,
         };
 
         let json = serde_json::to_string(&entry).unwrap();
@@ -253,6 +275,7 @@ mod tests {
             version: "0.0-1".into(),
             result: ScanResult::Error("network timeout".into()),
             scanned_at: Utc::now(),
+            commit_hash: None,
         };
 
         let json = serde_json::to_string(&entry).unwrap();
@@ -340,6 +363,109 @@ ttl_hours = 48
             Some("Analyse this PKGBUILD for safety issues.")
         );
         assert_eq!(config.cache.ttl_hours, 48);
+    }
+
+    // ── Backend ─────────────────────────────────────────────────────────────
+
+    /// Backend::Yay serialises as "yay".
+    #[test]
+    fn test_backend_yay_serialization() {
+        let json = serde_json::to_string(&Backend::Yay).unwrap();
+        assert_eq!(json, "\"yay\"");
+    }
+
+    /// Backend::Paru serialises as "paru".
+    #[test]
+    fn test_backend_paru_serialization() {
+        let json = serde_json::to_string(&Backend::Paru).unwrap();
+        assert_eq!(json, "\"paru\"");
+    }
+
+    // ── HelperConfig (TOML) ────────────────────────────────────────────────
+
+    /// [helper] section with backend = "paru" → Some(Backend::Paru).
+    #[test]
+    fn test_helper_config_paru_from_toml() {
+        let toml_str = r#"
+[ollama]
+model = "llama3"
+endpoint = "http://127.0.0.1:11434"
+
+[cache]
+ttl_hours = 24
+
+[helper]
+backend = "paru"
+"#;
+        let config: Config = toml::from_str(toml_str).expect("Config with paru helper");
+        assert_eq!(config.helper.backend, Some(Backend::Paru));
+    }
+
+    /// [helper] section with backend = "yay" → Some(Backend::Yay).
+    #[test]
+    fn test_helper_config_yay_from_toml() {
+        let toml_str = r#"
+[ollama]
+model = "llama3"
+endpoint = "http://127.0.0.1:11434"
+
+[cache]
+ttl_hours = 24
+
+[helper]
+backend = "yay"
+"#;
+        let config: Config = toml::from_str(toml_str).expect("Config with yay helper");
+        assert_eq!(config.helper.backend, Some(Backend::Yay));
+    }
+
+    /// Missing [helper] section → HelperConfig backend is None via serde(default).
+    #[test]
+    fn test_helper_config_missing() {
+        let toml_str = r#"
+[ollama]
+model = "llama3"
+endpoint = "http://127.0.0.1:11434"
+
+[cache]
+ttl_hours = 24
+"#;
+        let config: Config = toml::from_str(toml_str).expect("Config without helper");
+        assert_eq!(config.helper.backend, None);
+    }
+
+    // ── CacheEntry with commit_hash ────────────────────────────────────────
+
+    /// CacheEntry round-trip when commit_hash is None.
+    #[test]
+    fn test_cache_entry_commit_hash_none() {
+        let entry = CacheEntry {
+            package_base: "test-pkg".into(),
+            version: "1.0-1".into(),
+            result: ScanResult::Clean,
+            scanned_at: Utc::now(),
+            commit_hash: None,
+        };
+        let json = serde_json::to_string(&entry).expect("serialize");
+        let deserialized: CacheEntry =
+            serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(deserialized.commit_hash, None);
+    }
+
+    /// CacheEntry round-trip when commit_hash is Some("abc123").
+    #[test]
+    fn test_cache_entry_commit_hash_some() {
+        let entry = CacheEntry {
+            package_base: "test-pkg".into(),
+            version: "1.0-1".into(),
+            result: ScanResult::Clean,
+            scanned_at: Utc::now(),
+            commit_hash: Some("abc123".into()),
+        };
+        let json = serde_json::to_string(&entry).expect("serialize");
+        let deserialized: CacheEntry =
+            serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(deserialized.commit_hash.as_deref(), Some("abc123"));
     }
 
     // ── PackageScan ─────────────────────────────────────────────────────────
